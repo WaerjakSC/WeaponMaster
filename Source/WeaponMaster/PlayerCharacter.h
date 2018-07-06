@@ -60,7 +60,6 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	bool StopNow;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Setup")
 		UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere, Category = "Camera Setup")
@@ -71,6 +70,9 @@ public:
 		void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor *OtherActor,
 			UPrimitiveComponent *OtherComponent, int32 OtherBodyIndex,
 			bool bFromSweep, const FHitResult &SweepResult);
+	/*OnHit function is called when the Player hits something*/
+	UFUNCTION()
+		void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	
 private:
 	bool Dashing;

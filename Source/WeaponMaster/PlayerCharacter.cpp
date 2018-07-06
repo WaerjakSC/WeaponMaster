@@ -1,8 +1,12 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "PlayerCharacter.h"
+#include "Engine/Engine.h"
 
-
+/* TODO: 
+Dashing towards a wall puts you inside it if you're next to it already
+Set up fake enemies with health to test the dashing damage system
+*/
 // Sets default values
 APlayerCharacter::APlayerCharacter()
 {
@@ -11,12 +15,18 @@ APlayerCharacter::APlayerCharacter()
 
 	ACharacter::GetCapsuleComponent()->InitCapsuleSize(30.f, 100.f);
 	ACharacter::GetCapsuleComponent()->bGenerateOverlapEvents = true;
+
 	ACharacter::GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &APlayerCharacter::OnOverlap);
+	ACharacter::GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &APlayerCharacter::OnHit);
+
 
 	// Don't rotate character to camera direction
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
+
+	// Rotate to direction of movement
+	GetCharacterMovement()->bOrientRotationToMovement = true;
 
 	ACharacter::GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	ACharacter::GetMesh()->SetRelativeScale3D(FVector(12.75f, 12.75f, 12.75f));
@@ -40,6 +50,8 @@ APlayerCharacter::APlayerCharacter()
 void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	// This only works in BeginPlay for some reason
+	ACharacter::GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &APlayerCharacter::OnHit);
 
 }
 
@@ -47,56 +59,55 @@ void APlayerCharacter::BeginPlay()
 void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 	if (Controller && Controller->IsLocalController())
 	{
-		FHitResult Hit;
-		bool HitResult = false;
-		// GameTraceChannel1 = Ground custom channel in editor
-		HitResult = GetWorld()->GetFirstPlayerController()->GetHitResultUnderCursorByChannel(UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel1), true, Hit);
-		if (HitResult)
+		if (Dashing)
 		{
-			//Updates cursor
-			FVector CursorFV = Hit.ImpactNormal;
-			FRotator CursorR = CursorFV.Rotation();
-
-			//Set the new direction of the pawn:
-			FVector CursorLocation = Hit.Location;
-			//Set Z to a little above ground
-			FVector TempLocation = FVector(CursorLocation.X, CursorLocation.Y, 30.f);
-
-			//Pure vector math
-			FVector NewDirection = TempLocation - GetActorLocation();
-			NewDirection.Z = 0.f;
-			NewDirection.Normalize();
-			// Remove when done debugging
-			//DrawDebugLine(GetWorld(), GetActorLocation(), TempLocation, FColor(0, 0, 255), false, 0.f, 0.f, 10.f);
-			SetActorRotation(NewDirection.Rotation());
+			// Might keep going
+			SetActorLocation(FMath::VInterpConstantTo(GetActorLocation(), NewLoc, DeltaTime, 5000.f));
+			FVector DashX = NewLoc - GetActorLocation();
+			float DashEnd = FMath::Abs(DashX.X) + FMath::Abs(DashX.Y);
+			//UE_LOG(LogTemp, Warning, TEXT("Distance from EndPoint: %f"), DashEnd)
+			if (DashEnd <= 20.f)
+			{
+				Dashing = false;
+			}
 		}
-	}
-	if (Dashing)
-	{
-		CurrentLoc = GetActorLocation();
-		SetActorLocation(FMath::VInterpConstantTo(CurrentLoc, NewLoc, DeltaTime, 5000.f));
-		FVector DashX = NewLoc - CurrentLoc;
-		float DashEnd = FMath::Abs(DashX.X) + FMath::Abs(DashX.Y);
-		//UE_LOG(LogTemp, Warning, TEXT("Distance from EndPoint: %f"), DashEnd)
-		if (DashEnd <= 20.f)
+		// If no movement input is detected, accept the next movement input within 150ms as the next dash direction
+		if (DelayedDash)
 		{
-			Dashing = false;
+			DashTimer += DeltaTime;
+			if (DashTimer >= .15f)
+			{
+				DashNow();
+				DashTimer = 0.f;
+				DelayedDash = false;
+			}
 		}
-	}
-	if (DelayedDash)
-	{
-		DashTimer += DeltaTime;
-		if (DashTimer >= .15f)
-		{
-			DashNow();
-			DashTimer = 0.f;
-			DelayedDash = false;
-		}
-	}
+		//FHitResult Hit;
+		//bool HitResult = false;
+		//// GameTraceChannel1 = Ground custom channel in editor
+		//HitResult = GetWorld()->GetFirstPlayerController()->GetHitResultUnderCursorByChannel(UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel1), true, Hit);
+		//if (HitResult)
+		//{
+		//	//Updates cursor
+		//	FVector CursorFV = Hit.ImpactNormal;
+		//	FRotator CursorR = CursorFV.Rotation();
 
+		//	//Set the new direction of the pawn:
+		//	FVector CursorLocation = Hit.Location;
+		//	//Set Z to a little above ground
+		//	FVector TempLocation = FVector(CursorLocation.X, CursorLocation.Y, 30.f);
+
+		//	//Pure vector math
+		//	FVector NewDirection = TempLocation - GetActorLocation();
+		//	NewDirection.Z = 0.f;
+		//	NewDirection.Normalize();
+		//	// Remove when done debugging
+		//	DrawDebugLine(GetWorld(), GetActorLocation(), TempLocation, FColor(0, 0, 255), false, 0.f, 0.f, 10.f);
+		//	//SetActorRotation(NewDirection.Rotation());
+		//}
+	}
 }
 
 // Called to bind functionality to input
@@ -143,25 +154,19 @@ void APlayerCharacter::Dash()
 }
 void APlayerCharacter::DashNow()
 {
-	if (!Dashing)
-	{
-		DashDirection.X = MovementInput.X;
-		DashDirection.Y = MovementInput.Y;
-		FVector EndPoint = (DashLength / DashDirection.Size()) * DashDirection;
-		NewLoc = CurrentLoc + EndPoint;
-		UE_LOG(LogTemp, Warning, TEXT("EndPoint.X: %f, EndPoint.Y: %f"), EndPoint.X, EndPoint.Y)
-			Dashing = true;
-		//StartTimer();
-	}
+	DashDirection.X = MovementInput.X;
+	DashDirection.Y = MovementInput.Y;
+	FVector EndPoint = (DashLength / DashDirection.Size()) * DashDirection;
+	NewLoc = GetActorLocation() + EndPoint;
+	UE_LOG(LogTemp, Warning, TEXT("EndPoint.X: %f, EndPoint.Y: %f"), EndPoint.X, EndPoint.Y)
+	Dashing = true;
+	//StartTimer();
 }
 
 void APlayerCharacter::StopDash()
 {
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
-	FVector CurrentVelocity = (GetCharacterMovement()->Velocity) / 15.f;
-	GetCharacterMovement()->Velocity.X = CurrentVelocity.X;
-	GetCharacterMovement()->Velocity.Y = CurrentVelocity.Y;
-	StopNow = true;
+	Dashing = false;
+	NewLoc = GetActorLocation();
 }
 void APlayerCharacter::PauseGame()
 {
@@ -179,5 +184,12 @@ void APlayerCharacter::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	bool bFromSweep, const FHitResult &SweepResult)
 {
 
+}
+
+void APlayerCharacter::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
+	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	StopDash();
+	Dashing = false;
 }
 
