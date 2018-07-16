@@ -35,15 +35,17 @@ protected:
 	void MoveForward(float AxisValue);
 	void MoveRight(float AxisValue);
 	void Dash();
-	FVector DashDirection;
+	FVector2D DashDirection;
+	
 	UFUNCTION(BlueprintCallable)
 		void PauseGame();
 
 	// Stop dash and dashnow used in Dash() function
 	void DashNow();
 	UFUNCTION(BlueprintCallable)
-		void StopDash();
-	// StartTimer() sends an event to blueprint which triggers StopDash after DashDuration
+	void StopDash();
+	void DashImplementation();
+	// StartTimer() sends an event to blueprint which sets Dashing to false after DashDuration
 	UFUNCTION(BlueprintImplementableEvent)
 		void StartTimer();
 
@@ -51,8 +53,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dash")
 		float DashDuration = .2f;
 	// Sets the speed used for dash
-	UPROPERTY(EditAnywhere, Category = "Movement")
-		float DashLength = 750.f;
+	UPROPERTY(EditAnywhere, Category = "Dash")
+		float DashSpeed = 25000.f;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -75,9 +78,13 @@ public:
 		void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	
 private:
-	bool Dashing;
+	float WalkSpeed{ 750.f };
 	bool DelayedDash;
+	bool Dashing;
 	float DashTimer{ 0.f };
 	FVector NewLoc;
 	FVector CurrentLoc;
+	FVector DashStart;
+	FVector DashEnd;
+	
 };

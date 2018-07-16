@@ -4,8 +4,11 @@
 #include "Engine/Engine.h"
 
 /* TODO: 
-Dashing towards a wall puts you inside it if you're next to it already
+Set player character to block enemies and change it during dash to overlap instead, do the same to enemies for the player.
 Set up fake enemies with health to test the dashing damage system
+Use linetrace to end of dash and at start of dash function change collision of all hit by linetrace to overlap player instead of blocking, and do the same to player
+Or create an invisible object line that "erupts" at the end of the dash, causing damage to anything it's overlapped with (this would work well for more irregular area of effect type damage)
+How is animation tied into things like area of effect attacks? Is the animation itself responsible for triggering damage done? (I think so)
 */
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -30,10 +33,6 @@ APlayerCharacter::APlayerCharacter()
 
 	ACharacter::GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	ACharacter::GetMesh()->SetRelativeScale3D(FVector(12.75f, 12.75f, 12.75f));
-	// Configure character dash settings
-	GetCharacterMovement()->MaxFlySpeed = 25000.f;
-	GetCharacterMovement()->MaxAcceleration = 25000.f;
-	GetCharacterMovement()->BrakingDecelerationFlying = 15000.f;
 
 	// Sets up camera boom and camera
 	CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("Camera Boom"));
@@ -63,15 +62,7 @@ void APlayerCharacter::Tick(float DeltaTime)
 	{
 		if (Dashing)
 		{
-			// Might keep going
-			SetActorLocation(FMath::VInterpConstantTo(GetActorLocation(), NewLoc, DeltaTime, 5000.f));
-			FVector DashX = NewLoc - GetActorLocation();
-			float DashEnd = FMath::Abs(DashX.X) + FMath::Abs(DashX.Y);
-			//UE_LOG(LogTemp, Warning, TEXT("Distance from EndPoint: %f"), DashEnd)
-			if (DashEnd <= 20.f)
-			{
-				Dashing = false;
-			}
+			DashImplementation();
 		}
 		// If no movement input is detected, accept the next movement input within 150ms as the next dash direction
 		if (DelayedDash)
@@ -84,29 +75,6 @@ void APlayerCharacter::Tick(float DeltaTime)
 				DelayedDash = false;
 			}
 		}
-		//FHitResult Hit;
-		//bool HitResult = false;
-		//// GameTraceChannel1 = Ground custom channel in editor
-		//HitResult = GetWorld()->GetFirstPlayerController()->GetHitResultUnderCursorByChannel(UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel1), true, Hit);
-		//if (HitResult)
-		//{
-		//	//Updates cursor
-		//	FVector CursorFV = Hit.ImpactNormal;
-		//	FRotator CursorR = CursorFV.Rotation();
-
-		//	//Set the new direction of the pawn:
-		//	FVector CursorLocation = Hit.Location;
-		//	//Set Z to a little above ground
-		//	FVector TempLocation = FVector(CursorLocation.X, CursorLocation.Y, 30.f);
-
-		//	//Pure vector math
-		//	FVector NewDirection = TempLocation - GetActorLocation();
-		//	NewDirection.Z = 0.f;
-		//	NewDirection.Normalize();
-		//	// Remove when done debugging
-		//	DrawDebugLine(GetWorld(), GetActorLocation(), TempLocation, FColor(0, 0, 255), false, 0.f, 0.f, 10.f);
-		//	//SetActorRotation(NewDirection.Rotation());
-		//}
 	}
 }
 
@@ -154,19 +122,28 @@ void APlayerCharacter::Dash()
 }
 void APlayerCharacter::DashNow()
 {
-	DashDirection.X = MovementInput.X;
-	DashDirection.Y = MovementInput.Y;
-	FVector EndPoint = (DashLength / DashDirection.Size()) * DashDirection;
-	NewLoc = GetActorLocation() + EndPoint;
-	UE_LOG(LogTemp, Warning, TEXT("EndPoint.X: %f, EndPoint.Y: %f"), EndPoint.X, EndPoint.Y)
 	Dashing = true;
-	//StartTimer();
-}
-
+	// DashStart = GetActorLocation();
+	DashDirection = MovementInput;
+	GetCharacterMovement()->MaxWalkSpeed = DashSpeed;
+	GetCharacterMovement()->MaxAcceleration = DashSpeed;
+	StartTimer();
+	UE_LOG(LogTemp, Warning, TEXT("DashDirection.X = %f, DashDirection.Y = %f"), DashDirection.X, DashDirection.Y)
+} 
 void APlayerCharacter::StopDash()
 {
 	Dashing = false;
-	NewLoc = GetActorLocation();
+	// Temp to visualize dash distance
+	// DashEnd = GetActorLocation();
+	// DrawDebugLine(GetWorld(), DashStart, DashEnd, FColor(0, 0, 255), true, 0.f, 0.f, 40.f);
+	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+	GetCharacterMovement()->MaxAcceleration = 2048.f;
+	GetCharacterMovement()->Velocity = FVector(0.f, 0.f, 0.f);
+}
+void APlayerCharacter::DashImplementation()
+{
+	AddMovementInput(FVector(1.f, 0.f, 0.f), DashDirection.X);
+	AddMovementInput(FVector(0.f, 1.f, 0.f), DashDirection.Y);
 }
 void APlayerCharacter::PauseGame()
 {
@@ -183,13 +160,14 @@ void APlayerCharacter::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	UPrimitiveComponent *OtherComponent, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult &SweepResult)
 {
-
+	// For enemies, when dashing should be the only time player is capable of overlapping
+	// So OnOverlap should trigger a damage function for the enemy
 }
 
 void APlayerCharacter::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	// Dash should only trigger a block if hitting something like a wall
 	StopDash();
-	Dashing = false;
 }
 
